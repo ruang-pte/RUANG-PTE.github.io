@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jadwal Materi Writing</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen py-6 px-3 md:px-4">
+  <main class="max-w-5xl mx-auto bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
+    <section class="bg-[#0f172a] p-7 md:p-10 text-center">
+      <h1 id="pageTitle" class="text-4xl md:text-7xl font-extrabold text-[#fbbf24] leading-tight tracking-wide">MATERI
+        WRITING</h1>
+      <div
+        class="mt-4 inline-block bg-[#fbbf24] text-[#0f172a] text-base md:text-2xl font-bold px-5 md:px-8 py-2 rounded-full shadow-md">
+        PERIODE <span id="periodText">-</span>
+      </div>
+      <p id="subtitleText" class="text-white mt-4 text-sm md:text-lg">Memuat jadwal...</p>
+    </section>
+
+    <section id="scheduleRoot" class="p-4 md:p-8 space-y-8">
+      <div class="p-6 text-center text-gray-500">Memuat jadwal...</div>
+    </section>
+
+    <section class="px-4 pb-8 md:px-8">
+      <div class="bg-[#0f172a] rounded-xl p-6 mt-2">
+        <div
+          class="text-center bg-[#fbbf24] px-4 py-1 rounded-md text-[#0f172a] font-bold text-sm max-w-max mx-auto mb-4">
+          CATATAN PENTING
+        </div>
+        <div id="notes" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-white text-sm"></div>
+      </div>
+    </section>
+
+    <footer class="bg-[#0f172a] text-white text-center py-4 text-sm">
+      <p class="font-bold tracking-widest text-gray-300">JANGAN LUPA LATIHAN, RAIH SKOR YANG TINGGI</p>
+      <p class="text-[#fbbf24] text-xs mt-1">PTE - Smart Practice - Better Score</p>
+    </footer>
+  </main>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      google.script.run
+        .withSuccessHandler(renderSchedule)
+        .withFailureHandler(showError)
+        .getScheduleData();
+    });
+
+    function renderSchedule(data) {
+      const settings = data.settings || {};
+      document.getElementById('pageTitle').textContent = settings.Judul || 'MATERI WRITING';
+      document.getElementById('periodText').textContent = settings.Periode || '';
+      document.getElementById('subtitleText').textContent = settings.Subjudul || '';
+      document.getElementById('notes').innerHTML = [
+        settings['Catatan 1'],
+        settings['Catatan 2'],
+        settings['Catatan 3'],
+      ].filter(Boolean).map(note => '<p>' + esc(note) + '</p>').join('');
+
+      const holidays = (settings['Hari Libur'] || '').split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+
+      const root = document.getElementById('scheduleRoot');
+      root.innerHTML = data.days.map(day => {
+        const isHoliday = holidays.includes(day.toLowerCase());
+        return renderDay(day, data.grouped[day], isHoliday);
+      }).join('');
+    }
+
+    function renderDay(day, groups, isHoliday) {
+      if (isHoliday) {
+        return '<section class="rounded-xl border border-red-200 overflow-hidden shadow-sm bg-gradient-to-r from-red-50 to-orange-50">' +
+          '<div class="bg-red-600 text-white px-4 py-3 font-extrabold text-xl flex items-center justify-between">' +
+            '<span>' + esc(day.toUpperCase()) + '</span>' +
+            '<span class="bg-white text-red-600 text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider shadow-sm">Libur</span>' +
+          '</div>' +
+          '<div class="p-8 text-center flex flex-col items-center justify-center space-y-3">' +
+            '<div class="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-3xl shadow-inner animate-pulse">' +
+              '<i class="fa-solid fa-mug-hot"></i>' +
+            '</div>' +
+            '<h3 class="text-xl font-bold text-red-800">Hari ini tidak ada kelas</h3>' +
+            '<p class="text-red-600 text-sm max-w-md">Kelas diliburkan untuk hari ini. Silakan gunakan waktu untuk istirahat atau latihan mandiri. Tetap semangat!</p>' +
+          '</div>' +
+          '</section>';
+      }
+
+      return '<section class="rounded-xl border border-gray-200 overflow-hidden">' +
+        '<div class="bg-[#0f172a] text-[#fbbf24] px-4 py-3 font-extrabold text-xl">' + esc(day.toUpperCase()) + '</div>' +
+        '<div class="p-4 md:p-5 space-y-6">' +
+        renderTable('JADWAL KELAS OFFLINE', groups.Offline, 'offline') +
+        renderTable('JADWAL KELAS ONLINE', groups.Online, 'online') +
+        '</div>' +
+        '</section>';
+    }
+
+    function renderTable(title, rows, type) {
+      const headers = type === 'offline'
+        ? ['WAKTU', 'SESI', 'PENGAJAR', 'TEMPAT', 'FOKUS']
+        : ['WAKTU', 'SESI', 'PENGAJAR', 'PLATFORM', 'FOKUS'];
+
+      return '<div>' +
+        '<h2 class="text-lg md:text-2xl font-bold text-[#0f172a] mb-3">' + esc(title) + '</h2>' +
+        '<div class="overflow-x-auto rounded-lg border border-gray-300 shadow-sm">' +
+        '<table class="w-full text-left text-sm md:text-base">' +
+        '<thead class="bg-[#0f172a] text-white"><tr>' +
+        headers.map(header => '<th class="p-3 ' + (header === 'WAKTU' || header === 'SESI' ? 'text-center' : '') + '">' + header + '</th>').join('') +
+        '</tr></thead>' +
+        '<tbody class="divide-y divide-gray-200">' +
+        (rows.length ? rows.map(row => renderRow(row, type)).join('') : emptyRow(headers.length)) +
+        '</tbody>' +
+        '</table>' +
+        '</div>' +
+        '</div>';
+    }
+
+    function renderRow(row, type) {
+      if (type === 'offline') {
+        return '<tr class="hover:bg-gray-50">' +
+          '<td class="p-3 text-center whitespace-nowrap">' + esc(row.Waktu) + '</td>' +
+          '<td class="p-3 text-center">' + sessionBadge(row.Sesi) + '</td>' +
+          '<td class="p-3 whitespace-nowrap">' + esc(row.Pengajar) + '</td>' +
+          '<td class="p-3 whitespace-nowrap">' + platformText(row.Platform) + '</td>' +
+          '<td class="p-3">' + labelBadge(row.Label) + esc(row.Fokus) + '</td>' +
+          '</tr>';
+      }
+
+      return '<tr class="hover:bg-gray-50">' +
+        '<td class="p-3 text-center whitespace-nowrap">' + esc(row.Waktu) + '</td>' +
+        '<td class="p-3 text-center whitespace-nowrap">' + sessionBadge(row.Sesi) + '</td>' +
+        '<td class="p-3 whitespace-nowrap">' + esc(row.Pengajar) + '</td>' +
+        '<td class="p-3 whitespace-nowrap">' + platformText(row.Platform) + '</td>' +
+        '<td class="p-3">' + labelBadge(row.Label) + esc(row.Fokus) + '</td>' +
+        '</tr>';
+    }
+
+    function sessionBadge(value) {
+      if (!value) return '';
+      return '<span class="bg-[#0f172a] text-white px-3 py-1 rounded-md text-xs font-bold">' + esc(value) + '</span>';
+    }
+
+    function labelBadge(value) {
+      if (!value) return '';
+      const text = value.toUpperCase();
+      const classes = text.includes('LAMA')
+        ? 'bg-[#fbbf24] text-[#0f172a]'
+        : text.includes('SEMUA')
+          ? 'bg-gray-500 text-white'
+          : 'bg-[#0f172a] text-white';
+
+      return '<span class="inline-block ' + classes + ' px-2 py-0.5 rounded text-[10px] font-bold mb-1">' + esc(value) + '</span><br>';
+    }
+
+    function platformText(value) {
+      if (!value) return '';
+
+      // Tag Font Awesome dengan tambahan class Tailwind untuk warna dan margin
+      const discordIcon = '<i class="fa-brands fa-discord text-[#5865F2] mr-2"></i>';
+      const meetIcon = '<i class="fa-solid fa-video text-[#feda1e] mr-2"></i>';
+      const officeIcon = '<i class="fa-solid fa-building text-gray-600 mr-2"></i>';
+      const cafeIcon = '<i class="fa-solid fa-mug-hot text-[#6F4E37] mr-2"></i>';
+      const rumahIcon = '<i class="fa-solid fa-house-chimney-user text-gray-600 mr-2"></i>';
+
+      // Simpan hasil toLowerCase agar lebih efisien dan bersih
+      const valLower = value.toLowerCase();
+
+      const icon = valLower.includes('discord') ? discordIcon
+        : valLower.includes('meet') ? meetIcon
+          : valLower.includes('office') ? officeIcon
+            : valLower.includes('cafe') ? cafeIcon
+              : valLower.includes('rumah') ? rumahIcon
+                : '';
+
+      return `${icon}${esc(value)}`;
+    }
+
+    function emptyRow(colspan) {
+      return '<tr><td colspan="' + colspan + '" class="p-4 text-center text-gray-500">Belum ada jadwal.</td></tr>';
+    }
+
+    function showError(error) {
+      document.getElementById('scheduleRoot').innerHTML =
+        '<div class="p-6 text-center text-red-600">Gagal memuat jadwal: ' + esc(error.message || error) + '</div>';
+    }
+
+    function esc(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+  </script>
+</body>
+
+</html>
