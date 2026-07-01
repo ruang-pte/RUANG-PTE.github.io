@@ -130,7 +130,7 @@
         '<div class="overflow-x-auto rounded-lg border border-gray-300 shadow-sm">' +
         '<table class="w-full text-left text-sm md:text-base">' +
         '<thead class="bg-[#0f172a] text-white"><tr>' +
-        headers.map(header => '<th class="p-3 whitespace-nowrap' + (header === 'WAKTU' || header === 'SESI' ? 'text-center' : '') + '">' + header + '</th>').join('') +
+        headers.map(header => '<th class="p-3 ' + (header === 'WAKTU' || header === 'SESI' ? 'text-center' : '') + '">' + header + '</th>').join('') +
         '</tr></thead>' +
         '<tbody class="divide-y divide-gray-200">' +
         (rows.length ? rows.map(row => renderRow(row, type)).join('') : emptyRow(headers.length)) +
