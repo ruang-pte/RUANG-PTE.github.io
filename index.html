@@ -15,7 +15,7 @@
   </style>
 </head>
 
-<body class="bg-gray-100 min-h-screen py-6 px-3 md:px-4">
+<body class="bg-gray-100 min-h-screen py-6 px-3 md:px-4 relative">
   <main class="max-w-5xl mx-auto bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
     <section class="bg-[#0f172a] p-7 md:p-10 text-center">
       <h1 id="pageTitle" class="text-4xl md:text-7xl font-extrabold text-[#fbbf24] leading-tight tracking-wide">MATERI
@@ -27,7 +27,7 @@
       <p id="subtitleText" class="text-white mt-4 text-sm md:text-lg">Memuat jadwal...</p>
     </section>
 
-    <section id="scheduleRoot" class="p-4 md:p-8 space-y-8">
+    <section id="scheduleRoot" class="p-4 md:p-8 space-y-8" style="background: linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.7)), url('/img/sketsa.webp') left/cover fixed no-repeat;">
       <div class="p-6 text-center text-gray-500">Memuat jadwal...</div>
     </section>
 
@@ -47,10 +47,14 @@
     </footer>
   </main>
 
+  <div class="fixed bottom-6 right-6 z-50">
+    <a href="/sistem-booking/static-site/Index.html" class="bg-[#f59e0b] text-[#0f172a] hover:bg-[#c19218] text-white font-bold py-2 px-4 rounded-full shadow-md transition duration-300">BOOKING BANK REFERENCE <i class="fas fa-calendar-alt ml-[5px]"></i></a>
+  </div>
+    
   <script>
 
     const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyOOzlLbHnARf2hOJysUl1ZAYU01hbty1NjIs-MqBzw9HLWoopV8CEdfOj4IQ8MqsGjcg/exec';
- 
+
     document.addEventListener('DOMContentLoaded', () => {
       fetchScheduleData();
     });
@@ -109,7 +113,7 @@
 
       return '<section class="rounded-xl border border-gray-200 overflow-hidden">' +
         '<div class="bg-[#0f172a] text-[#fbbf24] px-4 py-3 font-extrabold text-xl">' + esc(day.toUpperCase()) + '</div>' +
-        '<div class="p-4 md:p-5 space-y-6">' +
+        '<div class="p-4 md:p-5 space-y-6 bg-white bg-opacity-60">' +
         renderTable('JADWAL KELAS OFFLINE', groups.Offline, 'offline') +
         renderTable('JADWAL KELAS ONLINE', groups.Online, 'online') +
         '</div>' +
@@ -138,7 +142,7 @@
 
     function renderRow(row, type) {
       if (type === 'offline') {
-        return '<tr class="hover:bg-gray-50">' +
+        return '<tr class="hover:bg-gray-300">' +
           '<td class="p-3 text-center whitespace-nowrap">' + esc(row.Waktu) + '</td>' +
           '<td class="p-3 text-center whitespace-nowrap">' + sessionBadge(row.Sesi) + '</td>' +
           '<td class="p-3 whitespace-nowrap">' + esc(row.Pengajar) + '</td>' +
@@ -147,7 +151,7 @@
           '</tr>';
       }
 
-      return '<tr class="hover:bg-gray-50">' +
+      return '<tr class="hover:bg-gray-300">' +
         '<td class="p-3 text-center whitespace-nowrap">' + esc(row.Waktu) + '</td>' +
         '<td class="p-3 text-center whitespace-nowrap">' + sessionBadge(row.Sesi) + '</td>' +
         '<td class="p-3 whitespace-nowrap">' + esc(row.Pengajar) + '</td>' +

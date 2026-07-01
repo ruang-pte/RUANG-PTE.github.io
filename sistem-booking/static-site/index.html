@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sistem Booking</title>
+  <!--
+    ============================================================
+    SISTEM BOOKING — FRONTEND STATIS (untuk GitHub Pages)
+    ============================================================
+
+    FILE INI ADALAH FRONTEND STATIS yang dipanggil ke Apps Script API.
+    Bisa di-host di GitHub Pages, Netlify, Vercel, atau server statis mana pun.
+
+    PRASYARAT:
+    1. Apps Script project (folder google-apps-script/) sudah di-setup & dideploy
+       sebagai Web App (Execute as: Me, Access: Anyone).
+    2. Dari URL deploy Apps Script, ambil SCRIPT_ID — bagian antara
+       /macros/s/ dan /exec, contoh:
+       https://script.google.com/macros/s/AKfycbz...XXXX.../exec
+                                      └──── SCRIPT_ID ────┘
+
+    CARA PAKAI (GitHub Pages):
+    1. Buat repo baru di GitHub (mis. "sistem-booking").
+    2. Copy file ini sebagai index.html di root repo.
+    3. Edit konstanta APPS_SCRIPT_URL di bawah — ganti SCRIPT_ID dengan
+       punya Anda.
+    4. Push ke GitHub → Settings → Pages → Source: branch "main" / root → Save.
+    5. Akses https://<username>.github.io/sistem-booking/
+
+    SEMUA FITUR TETAP UTUH:
+    ✓ Dropdown Nama dari Whitelist (real-time dari spreadsheet)
+    ✓ Maks 5 pendaftar per tanggal + auto-move bila penuh
+    ✓ Sabtu & Minggu ditolak
+    ✓ Nomor WA ganda ditolak
+    ✓ Tombol Ajukan Pergantian Hari via WhatsApp
+    ✓ Papan booking live (refresh data dari spreadsheet)
+
+    CATATAN PENTING TENTANG CORS:
+    Apps Script Web App mendukung cross-origin request dari site statis.
+    Untuk POST, kita pakai Content-Type 'text/plain' agar terhindar dari
+    preflight CORS (yang tidak didukung penuh Apps Script).
+    ============================================================
+  -->
+  <style>
+    :root {
+      --primary: #059669;
+      --primary-dark: #047857;
+      --primary-light: #d1fae5;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --full: #dc2626;
+      --full-bg: #fef2f2;
+      --slot-empty: #f1f5f9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .container {
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px 16px;
+      flex: 1;
+    }
+    header { text-align: center; margin-bottom: 28px; }
+    header h1 { font-size: 28px; font-weight: 800; margin-bottom: 6px; }
+    header p { color: var(--muted); font-size: 15px; }
+    .badge {
+      display: inline-block; background: var(--primary-light); color: var(--primary-dark);
+      padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-bottom: 10px;
+    }
+    .stats {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 18px 12px; text-align: center;
+    }
+    .stat-value { font-size: 30px; font-weight: 800; color: var(--primary); line-height: 1; }
+    .stat-label { font-size: 12px; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .form-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .form-card h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .form-card .sub { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+    .field label .req { color: var(--full); }
+    .field select, .field input[type=date] {
+      width: 100%; padding: 11px 12px; border: 1px solid var(--border);
+      border-radius: 10px; font-size: 14px; background: #fff; color: var(--text);
+      box-sizing: border-box; transition: border-color .15s;
+    }
+    .field select:focus, .field input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+    /* Combobox (searchable dropdown) untuk Nama */
+    .combobox { position: relative; }
+    .combobox-trigger {
+      width: 100%; padding: 11px 12px; border: 1px solid var(--border);
+      border-radius: 10px; font-size: 14px; background: #fff; color: var(--text);
+      box-sizing: border-box; transition: border-color .15s; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left;
+    }
+    .combobox-trigger.placeholder { color: var(--muted); }
+    .combobox-trigger:focus, .combobox-trigger[aria-expanded="true"] {
+      outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light);
+    }
+    .combobox-trigger .chevron { flex-shrink: 0; opacity: .5; transition: transform .15s; }
+    .combobox-trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+    .combobox-panel {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
+      background: #fff; border: 1px solid var(--border); border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12); overflow: hidden; display: none;
+    }
+    .combobox-panel.open { display: block; }
+    .combobox-search { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    .combobox-search svg { width: 16px; height: 16px; opacity: .5; flex-shrink: 0; }
+    .combobox-search input { flex: 1; border: none; outline: none; font-size: 14px; background: transparent; padding: 4px 0; }
+    .combobox-list { max-height: 280px; overflow-y: auto; padding: 4px; }
+    .combobox-optgroup-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 8px 4px; color: var(--muted); }
+    .combobox-optgroup-label.available { color: var(--primary-dark); }
+    .combobox-option {
+      display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
+      font-size: 14px; cursor: pointer; transition: background .1s; user-select: none;
+    }
+    .combobox-option:hover { background: var(--primary-light); }
+    .combobox-option.selected { background: var(--primary-light); font-weight: 600; }
+    .combobox-option.disabled { opacity: .5; cursor: not-allowed; font-style: italic; background: transparent; }
+    .combobox-option.disabled:hover { background: transparent; }
+    .combobox-option .check { width: 16px; height: 16px; flex-shrink: 0; color: var(--primary); opacity: 0; }
+    .combobox-option.selected .check { opacity: 1; }
+    .combobox-option .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .combobox-option .wa { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+    .combobox-empty { padding: 16px; text-align: center; font-size: 13px; color: var(--muted); }
+    .wa-display {
+      display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+      border-radius: 10px; font-size: 14px; font-weight: 600;
+    }
+    .wa-display.filled { background: var(--primary-light); border: 1px solid #a7f3d0; color: var(--primary-dark); }
+    .wa-display.empty { background: #f1f5f9; border: 1px solid var(--border); color: var(--muted); font-weight: 500; font-style: italic; }
+    .form-error {
+      background: var(--full-bg); border: 1px solid #fecaca; color: #991b1b;
+      padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-top: 12px; display: none;
+    }
+    .form-error.show { display: block; }
+    .form-success {
+      background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46;
+      padding: 10px 12px; border-radius: 10px; font-size: 13px; margin-top: 12px; display: none;
+    }
+    .form-success.show { display: block; }
+    .submit-btn {
+      width: 100%; padding: 12px; border: none; border-radius: 10px;
+      background: var(--primary); color: #fff; font-size: 15px; font-weight: 700;
+      cursor: pointer; transition: background .15s; margin-top: 4px;
+    }
+    .submit-btn:hover { background: var(--primary-dark); }
+    .submit-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+    .toolbar {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 18px; flex-wrap: wrap; gap: 10px;
+    }
+    .toolbar h2 { font-size: 18px; font-weight: 700; }
+    .btn {
+      background: var(--primary); color: #fff; border: none; border-radius: 10px;
+      padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .15s;
+    }
+    .btn:hover { background: var(--primary-dark); }
+    .legend {
+      display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: 16px;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+    .dot.filled { background: var(--primary-light); border: 1px solid #a7f3d0; }
+    .dot.empty { background: var(--slot-empty); border: 1px dashed var(--border); }
+    .rules-banner {
+      background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
+      border-radius: 12px; padding: 12px 14px; font-size: 13px; margin-bottom: 18px; line-height: 1.6;
+    }
+    .rules-banner b { color: #78350f; }
+    .board {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;
+    }
+    .date-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+      overflow: hidden; display: flex; flex-direction: column;
+    }
+    .date-card.full { border-color: #fecaca; }
+    .date-header {
+      padding: 14px 16px; background: var(--primary-light); display: flex;
+      justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);
+    }
+    .date-card.full .date-header { background: var(--full-bg); }
+    .date-day { font-size: 12px; font-weight: 700; color: var(--primary-dark); text-transform: uppercase; letter-spacing: 0.05em; }
+    .date-card.full .date-day { color: var(--full); }
+    .date-label { font-size: 15px; font-weight: 700; color: var(--text); margin-top: 2px; }
+    .date-count {
+      background: var(--card); border: 2px solid var(--primary); color: var(--primary-dark);
+      font-weight: 800; font-size: 14px; border-radius: 999px; padding: 4px 12px; min-width: 48px; text-align: center;
+    }
+    .date-card.full .date-count { border-color: var(--full); color: var(--full); background: var(--full-bg); }
+    .slots { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .slot { border-radius: 10px; padding: 10px 12px; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .slot.filled { background: var(--primary-light); color: var(--primary-dark); border: 1px solid #a7f3d0; }
+    .slot.empty { background: var(--slot-empty); color: var(--muted); border: 1px dashed var(--border); font-weight: 500; font-style: italic; }
+    .slot-num { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+    .slot.filled .slot-num { background: var(--primary); color: #fff; }
+    .slot.empty .slot-num { background: var(--border); color: var(--muted); }
+    .reschedule-btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      margin: 4px 12px 12px; padding: 9px 12px; border-radius: 10px;
+      background: #25D366; color: #fff; text-decoration: none; font-size: 13px; font-weight: 700;
+      transition: background .15s;
+    }
+    .reschedule-btn:hover { background: #1da851; }
+    .loading, .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); font-size: 16px; }
+    .spinner {
+      width: 36px; height: 36px; border: 4px solid var(--border);
+      border-top-color: var(--primary); border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin: 0 auto 14px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .api-error {
+      background: var(--full-bg); border: 1px solid #fecaca; color: #991b1b;
+      border-radius: 12px; padding: 14px 16px; margin-bottom: 18px; font-size: 13px; line-height: 1.6;
+    }
+    .api-error b { color: #7f1d1d; }
+    .api-error code { background: #fff; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    footer {
+      text-align: center; padding: 20px 16px; color: var(--muted); font-size: 13px;
+      border-top: 1px solid var(--border); background: var(--card); margin-top: auto;
+    }
+    @media (max-width: 560px) {
+      .stats { grid-template-columns: 1fr; }
+      header h1 { font-size: 22px; }
+      .board { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">🌐 Tim IT · RUANG PTE</div>
+      <h1>Booking Bank Reference</h1>
+      <p>Papan jadwal booking — maksimal 5 peserta per tanggal</p>
+    </header>
+
+    <div id="api-error" class="api-error" style="display:none"></div>
+
+    <div class="stats" id="stats"></div>
+
+    <!-- Form pendaftaran -->
+    <div class="form-card">
+      <h2>📝 Form Pendaftaran Booking</h2>
+      <p class="sub">Hanya nama yang terdaftar di Whitelist yang dapat melakukan booking.</p>
+
+      <div class="field">
+        <label for="f-nama">Nama <span class="req">*</span></label>
+        <div class="combobox" id="nama-combobox">
+          <button type="button" id="f-nama-trigger" class="combobox-trigger placeholder" aria-haspopup="listbox" aria-expanded="false" aria-controls="f-nama-panel" onclick="toggleCombobox(event)">
+            <span id="f-nama-label" class="name">— Cari nama Anda —</span>
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px;"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="f-nama-panel" class="combobox-panel" role="listbox">
+            <div class="combobox-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="f-nama-search" placeholder="Ketik nama atau nomor WA..." oninput="renderComboboxOptions()" autocomplete="off" style="border-radius: 5px; padding-left: 10px;"/>
+            </div>
+            <div id="f-nama-list" class="combobox-list"></div>
+          </div>
+        </div>
+        <input type="hidden" id="f-nama" />
+        <p style="font-size:12px;color:var(--muted);margin-top:6px;">Ketik untuk mencari. Hanya nama di Whitelist yang dapat booking.</p>
+      </div>
+
+      <div class="field">
+        <label>Nomor WhatsApp (terisi otomatis)</label>
+        <div id="f-wa" class="wa-display empty">Pilih nama dulu untuk menampilkan nomor WA</div>
+      </div>
+
+      <div class="field">
+        <label for="f-tanggal">Tanggal Booking <span class="req">*</span></label>
+        <input type="date" id="f-tanggal" />
+        <p style="font-size:12px;color:var(--muted);margin-top:6px;">Pilih hari kerja (Senin–Jumat). Sabtu &amp; Minggu ditolak.</p>
+      </div>
+
+      <button class="submit-btn" id="f-submit" onclick="submitForm()">Daftar Booking</button>
+      <div class="form-error" id="f-error"></div>
+      <div class="form-success" id="f-success"></div>
+    </div>
+
+    <div class="toolbar">
+      <h2>Papan Tanggal</h2>
+      <button class="btn" onclick="loadData()">🔄 Muat Ulang</button>
+    </div>
+
+    <div class="legend">
+      <span><i class="dot filled"></i> Slot terisi</span>
+      <span><i class="dot empty"></i> Slot kosong</span>
+      <span>ℹ️ Tanggal penuh → auto pindah ke hari kerja berikutnya</span>
+    </div>
+
+    <div class="rules-banner">
+      <b>📋 Aturan pendaftaran:</b><br>
+      • Hanya nama di <b>Whitelist</b> yang bisa booking.<br>
+      • Booking hanya untuk hari kerja (Senin–Jumat). <b>Sabtu &amp; Minggu ditolak.</b><br>
+      • Nomor WA yang sudah terdaftar <b>tidak dapat mendaftar lagi</b>. Untuk ganti hari, gunakan tombol <b>Ajukan Pergantian Hari</b> di kartu tanggal.
+    </div>
+
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      Memuat data booking...
+    </div>
+
+    <div id="board" class="board" style="display:none"></div>
+
+    <div id="empty-state" class="empty-state" style="display:none">
+      📭 Belum ada pendaftaran.
+    </div>
+  </div>
+
+  <footer>
+    Booking tanggal &rArr; Ke bank bersama tim RUANG PTE &rArr; Tim Ruang PTE transfer ke siswa &rArr; Siswa cetak bank reference &rArr; Uang ditransfer kembali ke tim RUANG PTE
+  </footer>
+
+  <script>
+
+    var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw43JooNncixXJDFwTJEHON7RWRBGCtGOtD3XD3oYieDneImL4q7weY9xZFyf_Ezeg/exec';
+    // ============================================================
+
+    // State global
+    var G_whitelist = [];
+    var G_reschedule = { waNumber: '6285704608723', template: 'Permisi kak, saya mau ganti jadwal booking menjadi tanggal [tanggal], terimakasih Tim IT RUANG PTE' };
+    var G_maxPerDate = 5;
+
+    // ---------- API helpers (fetch ke Apps Script) ----------
+    function apiGet(action) {
+      return fetch(APPS_SCRIPT_URL + '?api=' + action, { method: 'GET' })
+        .then(function (r) { return r.json(); });
+    }
+
+    function apiSubmitBooking(data) {
+      // Catatan: Content-Type 'text/plain' sengaja dipakai untuk menghindari
+      // CORS preflight yang tidak didukung penuh Apps Script.
+      return fetch(APPS_SCRIPT_URL + '?api=submitBooking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(data)
+      }).then(function (r) { return r.json(); });
+    }
+
+    // ---------- Load data ----------
+    function loadData() {
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('board').style.display = 'none';
+      document.getElementById('board').innerHTML = '';
+      document.getElementById('empty-state').style.display = 'none';
+
+      if (APPS_SCRIPT_URL === 'PASTE_URL_APPS_SCRIPT_ANDA_DI_SINI' || !APPS_SCRIPT_URL) {
+        showApiError('APPS_SCRIPT_URL belum dikonfigurasi.',
+          'Edit file index.html ini, lalu ganti nilai variabel <code>APPS_SCRIPT_URL</code> ' +
+          'dengan URL Web App Apps Script Anda (dari menu Deploy → Manage deployments).');
+        document.getElementById('loading').style.display = 'none';
+        return;
+      }
+      hideApiError();
+
+      apiGet('getBookingData')
+        .then(renderData)
+        .catch(function (err) {
+          showApiError('Gagal memuat data dari Apps Script API.',
+            'Pastikan <code>APPS_SCRIPT_URL</code> benar dan Web App sudah dideploy dengan akses "Anyone". ' +
+            'Detail: ' + escapeHtml(String(err)));
+          document.getElementById('loading').style.display = 'none';
+        });
+    }
+
+    function renderData(data) {
+      document.getElementById('loading').style.display = 'none';
+
+      if (data.error) {
+        showApiError('Apps Script mengembalikan error:', escapeHtml(data.error));
+        return;
+      }
+
+      G_maxPerDate = data.maxPerDate || 5;
+      G_whitelist = data.whitelist || [];
+      G_reschedule = data.reschedule || G_reschedule;
+
+      renderNamaDropdown(G_whitelist);
+
+      document.getElementById('stats').innerHTML =
+        statCard(data.totalBookings || 0, 'Total Pendaftar') +
+        statCard(data.totalDates || 0, 'Total Tanggal') +
+        statCard(G_maxPerDate, 'Maks / Tanggal');
+
+      if (!data.dates || data.dates.length === 0) {
+        document.getElementById('empty-state').style.display = 'block';
+        return;
+      }
+
+      var board = document.getElementById('board');
+      board.innerHTML = data.dates.map(function (d) { return renderDateCard(d, G_maxPerDate); }).join('');
+      board.style.display = 'grid';
+    }
+
+    // ---------- Form helpers ----------
+    function renderNamaDropdown(whitelist) {
+      var prevValue = document.getElementById('f-nama').value;
+      document.getElementById('f-nama').value = '';
+      document.getElementById('f-nama-search').value = '';
+      if (prevValue && whitelist) {
+        var stillValid = whitelist.some(function (w) { return w.nama === prevValue; });
+        if (stillValid) {
+          document.getElementById('f-nama').value = prevValue;
+          document.getElementById('f-nama-label').textContent = prevValue;
+          document.getElementById('f-nama-trigger').classList.remove('placeholder');
+        } else {
+          document.getElementById('f-nama-label').textContent = '— Cari nama Anda —';
+          document.getElementById('f-nama-trigger').classList.add('placeholder');
+        }
+      }
+      renderComboboxOptions();
+      onNamaChange();
+    }
+
+    function toggleCombobox(ev) {
+      ev.preventDefault();
+      var panel = document.getElementById('f-nama-panel');
+      var trigger = document.getElementById('f-nama-trigger');
+      if (panel.classList.contains('open')) {
+        closeCombobox();
+      } else {
+        panel.classList.add('open');
+        trigger.setAttribute('aria-expanded', 'true');
+        setTimeout(function () { document.getElementById('f-nama-search').focus(); }, 0);
+        renderComboboxOptions();
+      }
+    }
+
+    function closeCombobox() {
+      var panel = document.getElementById('f-nama-panel');
+      var trigger = document.getElementById('f-nama-trigger');
+      panel.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    function renderComboboxOptions() {
+      var list = document.getElementById('f-nama-list');
+      var whitelist = G_whitelist || [];
+      var q = (document.getElementById('f-nama-search').value || '').trim().toLowerCase();
+      var qDigits = q.replace(/\D/g, '').replace(/^0+/, ''); // hapus leading 0 agar "852" match "0852"
+      var current = document.getElementById('f-nama').value;
+
+      var filtered = whitelist.filter(function (w) {
+        if (!q) return true;
+        if (w.nama.toLowerCase().indexOf(q) !== -1) return true;
+        if (qDigits) {
+          var waDigits = String(w.nomorWa || '').replace(/\D/g, '').replace(/^0+/, '');
+          if (waDigits.indexOf(qDigits) !== -1) return true;
+        }
+        return false;
+      });
+
+      if (whitelist.length === 0) {
+        list.innerHTML = '<div class="combobox-empty">Whitelist kosong — isi sheet Whitelist di spreadsheet.</div>';
+        return;
+      }
+      if (filtered.length === 0) {
+        list.innerHTML = '<div class="combobox-empty">Tidak ada nama cocok dengan &quot;' + escapeHtml(q) + '&quot;.</div>';
+        return;
+      }
+
+      var available = filtered.filter(function (w) { return !w.alreadyBooked; });
+      var booked = filtered.filter(function (w) { return w.alreadyBooked; });
+      var html = '';
+      if (available.length) {
+        html += '<div class="combobox-optgroup-label available">Tersedia (' + available.length + ')</div>';
+        available.forEach(function (w) {
+          var sel = w.nama === current ? ' selected' : '';
+          html += '<div class="combobox-option' + sel + '" role="option" data-value="' + escapeAttr(w.nama) + '" onclick="selectNama(\'' + escapeAttr(w.nama) + '\')">' +
+            '<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>' +
+            '<span class="name">' + escapeHtml(w.nama) + '</span>' +
+            '<span class="wa">' + escapeHtml(w.nomorWa) + '</span>' +
+            '</div>';
+        });
+      }
+      if (booked.length) {
+        html += '<div class="combobox-optgroup-label">Sudah booking (' + booked.length + ')</div>';
+        booked.forEach(function (w) {
+          html += '<div class="combobox-option disabled" role="option" aria-disabled="true">' +
+            '<span class="name">' + escapeHtml(w.nama) + '</span>' +
+            '<span class="wa">sudah booking</span>' +
+            '</div>';
+        });
+      }
+      list.innerHTML = html;
+    }
+
+    function selectNama(nama) {
+      document.getElementById('f-nama').value = nama;
+      document.getElementById('f-nama-label').textContent = nama;
+      document.getElementById('f-nama-trigger').classList.remove('placeholder');
+      document.getElementById('f-nama-search').value = '';
+      closeCombobox();
+      onNamaChange();
+    }
+
+    function escapeAttr(text) {
+      return String(text == null ? '' : text)
+        .replace(/&/g, '&amp;')
+        .replace(/'/g, '&#39;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function onNamaChange() {
+      var nama = document.getElementById('f-nama').value;
+      var waBox = document.getElementById('f-wa');
+      var entry = null;
+      if (nama && G_whitelist) {
+        for (var i = 0; i < G_whitelist.length; i++) {
+          if (G_whitelist[i].nama === nama) { entry = G_whitelist[i]; break; }
+        }
+      }
+      if (entry) {
+        waBox.textContent = '📱 ' + entry.nomorWa;
+        waBox.className = 'wa-display filled';
+      } else {
+        waBox.textContent = 'Pilih nama dulu untuk menampilkan nomor WA';
+        waBox.className = 'wa-display empty';
+      }
+    }
+
+    function submitForm() {
+      hideFormMsg();
+      var nama = document.getElementById('f-nama').value;
+      var tanggal = document.getElementById('f-tanggal').value;
+      var btn = document.getElementById('f-submit');
+
+      if (!nama) { showFormError('Silakan pilih nama Anda.'); return; }
+      if (!tanggal) { showFormError('Silakan pilih tanggal booking.'); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Memproses...';
+
+      apiSubmitBooking({ nama: nama, tanggal: tanggal })
+        .then(function (res) {
+          btn.disabled = false;
+          btn.textContent = 'Daftar Booking';
+          if (res && res.success) {
+            document.getElementById('f-nama').value = '';
+            document.getElementById('f-nama-search').value = '';
+            document.getElementById('f-nama-label').textContent = '— Cari nama Anda —';
+            document.getElementById('f-nama-trigger').classList.add('placeholder');
+            document.getElementById('f-tanggal').value = '';
+            onNamaChange();
+            showFormSuccess('✅ ' + res.message);
+            loadData(); // refresh board
+          } else {
+            showFormError(res && res.message ? res.message : 'Pendaftaran gagal.');
+          }
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          btn.textContent = 'Daftar Booking';
+          showFormError('Kesalahan jaringan: ' + String(err));
+        });
+    }
+
+    // ---------- Render helpers ----------
+    function renderDateCard(d, max) {
+      var count = d.bookings.length;
+      var isFull = count >= max;
+      var slots = '';
+      for (var i = 0; i < max; i++) {
+        var b = d.bookings[i];
+        if (b) {
+          slots += '<div class="slot filled"><span class="slot-num">' + (i + 1) + '</span><span>' + escapeHtml(b.nama) + '</span></div>';
+        } else {
+          slots += '<div class="slot empty"><span class="slot-num">' + (i + 1) + '</span><span>Slot kosong</span></div>';
+        }
+      }
+      var waUrl = buildRescheduleUrl(d.dateLabel);
+      return '<div class="date-card' + (isFull ? ' full' : '') + '">' +
+        '<div class="date-header"><div>' +
+          '<div class="date-day">' + escapeHtml(d.dayName) + '</div>' +
+          '<div class="date-label">' + escapeHtml(d.dateLabel) + '</div>' +
+        '</div><div class="date-count">' + count + '/' + max + '</div></div>' +
+        '<div class="slots">' + slots + '</div>' +
+        '<a class="reschedule-btn" href="' + waUrl + '" target="_blank" rel="noopener noreferrer">💬 Ajukan Pergantian Hari</a>' +
+      '</div>';
+    }
+
+    function buildRescheduleUrl(dateLabel) {
+      var msg = (G_reschedule.template || '').replace('[tanggal]', dateLabel || '');
+      return 'https://wa.me/' + G_reschedule.waNumber + '?text=' + encodeURIComponent(msg);
+    }
+
+    function statCard(value, label) {
+      return '<div class="stat-card"><div class="stat-value">' + value + '</div><div class="stat-label">' + label + '</div></div>';
+    }
+
+    // ---------- UI helpers ----------
+    function showApiError(title, detail) {
+      var box = document.getElementById('api-error');
+      box.innerHTML = '<b>⚠️ ' + escapeHtml(title) + '</b><br>' + detail;
+      box.style.display = 'block';
+    }
+    function hideApiError() { document.getElementById('api-error').style.display = 'none'; }
+
+    function showFormError(msg) {
+      var box = document.getElementById('f-error');
+      box.textContent = '⚠️ ' + msg;
+      box.classList.add('show');
+      document.getElementById('f-success').classList.remove('show');
+    }
+    function showFormSuccess(msg) {
+      var box = document.getElementById('f-success');
+      box.textContent = msg;
+      box.classList.add('show');
+      document.getElementById('f-error').classList.remove('show');
+    }
+    function hideFormMsg() {
+      document.getElementById('f-error').classList.remove('show');
+      document.getElementById('f-success').classList.remove('show');
+    }
+
+    function escapeHtml(text) {
+      var div = document.createElement('div');
+      div.textContent = text == null ? '' : String(text);
+      return div.innerHTML;
+    }
+
+    // Tutup combobox saat klik di luar / Escape
+    document.addEventListener('click', function (ev) {
+      var combobox = document.getElementById('nama-combobox');
+      if (!combobox) return;
+      if (!combobox.contains(ev.target)) closeCombobox();
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') closeCombobox();
+    });
+
+    // ---------- Init ----------
+    loadData();
+  </script>
+</body>
+</html>
